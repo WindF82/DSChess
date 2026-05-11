@@ -75,6 +75,7 @@ class GameState:
         self.penalties_red = 0    # 红方扣分
         self.placed_count_black = 0
         self.placed_count_red = 0
+        self.current_turn_moved_piece = None  # 本轮已移动的棋子 (禁止同手走同一子)
         self.init_hands()
 
     def init_hands(self):
@@ -379,10 +380,12 @@ class GameState:
         return []
 
     def move_piece(self, from_row, from_col, to_row, to_col):
-        """移动棋子并返回是否吃子"""
+        """移动棋子并返回是否吃子; 同手不可走同一棋子"""
         piece = self.get_piece_at(from_row, from_col)
         if piece is None:
             return None, None
+        if self.current_turn_moved_piece is piece:
+            return None, None  # 同手不可重复走子
         captured = self.get_piece_at(to_row, to_col)
         if captured:
             self.pieces.remove(captured)
@@ -392,6 +395,7 @@ class GameState:
                 self.red_captured.append(captured)
         piece.row = to_row
         piece.col = to_col
+        self.current_turn_moved_piece = piece
         self.move_count += 1
         self.last_move = (from_row, from_col, to_row, to_col)
         # 检查兵是否到达敌方底线
@@ -416,6 +420,7 @@ class GameState:
     def advance_movement_turn(self):
         """切换到下一轮行棋"""
         self.move_count = 0
+        self.current_turn_moved_piece = None
         if self.current_player == SIDE_BLACK:
             self.current_player = SIDE_RED
         else:
@@ -456,18 +461,6 @@ class GameState:
             if p.side == side:
                 total += p.score
         return total
-
-    def check_cycle(self):
-        """检测循环, 返回主动循环方"""
-        current_key = self._board_key()
-        self.history.append(current_key)
-        if len(self.history) >= 4:
-            # 检查最近4个状态是否有重复
-            recent = self.history[-4:]
-            if recent[0] == recent[2] and recent[1] == recent[3]:
-                # 双方走成循环, 主动方扣分
-                return self.current_player
-        return None
 
     def _board_key(self):
         """生成棋盘状态快照"""

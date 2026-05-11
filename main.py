@@ -19,6 +19,7 @@ class DoubleChessApp:
         self.game = GameState()
         self.network = None
         self.my_side = None
+        self.local_mode = False     # 同机双人模式
         self.opponent_confirmed = False
         self.i_confirmed = False
         self.selected_piece = None
@@ -42,6 +43,11 @@ class DoubleChessApp:
         """主菜单界面"""
         for w in self.root.winfo_children():
             w.destroy()
+
+        self.local_mode = False
+        self.network = None
+        self.my_side = None
+        self.game_over = False
 
         self.root.geometry("400x600")
         self.root.configure(bg="#f0e6d3")
@@ -74,6 +80,12 @@ class DoubleChessApp:
         tk.Button(btn_frame, text="加入房间", font=("宋体", 13),
                   bg="#1a1a1a", fg="white", width=12, height=2,
                   command=self.join_game).pack(side=tk.LEFT, padx=10)
+
+        tk.Label(frame, text="", bg="#f0e6d3").pack()
+
+        tk.Button(frame, text="本地对战", font=("宋体", 13, "bold"),
+                  bg="#2e7d32", fg="white", width=20, height=2,
+                  command=self.start_local_game).pack(pady=5)
 
         tk.Label(frame, text="双方输入相同房间码即可联机", font=("宋体", 9),
                  bg="#f0e6d3", fg="#999").pack(pady=3)
@@ -142,6 +154,26 @@ class DoubleChessApp:
         if not success:
             self.setup_menu_ui()
             return
+
+    def start_local_game(self):
+        """启动同机双人对战"""
+        self.local_mode = True
+        self.my_side = SIDE_BLACK  # 用于UI显示，实际双方都可操作
+        self.start_game_ui()
+
+    def _is_my_turn(self):
+        """当前是否可操作 (本地模式或网络模式下的己方回合)"""
+        if self.local_mode:
+            return True
+        return self.game.current_player == self.my_side
+
+    def _should_timer_run(self):
+        """计时器是否应该运行"""
+        if self.game_over:
+            return False
+        if self.local_mode:
+            return True
+        return self.game.current_player == self.my_side
 
     def show_waiting_ui(self, code):
         """等待连接界面"""
@@ -336,11 +368,12 @@ class DoubleChessApp:
 
     def _start_timer(self):
         self._stop_timer()
-        if self.game_over:
+        if not self._should_timer_run():
             return
-        if self.game.current_player != self.my_side:
-            return
-        self.move_timer = 60
+        if self.game.phase == PHASE_PLACEMENT:
+            self.move_timer = PLACEMENT_TIMER
+        else:
+            self.move_timer = PLAYING_TIMER
         self._update_timer_display()
         self.timer_id = self.root.after(1000, self._tick_timer)
 
@@ -350,9 +383,7 @@ class DoubleChessApp:
             self.timer_id = None
 
     def _tick_timer(self):
-        if self.game_over:
-            return
-        if self.game.current_player != self.my_side:
+        if not self._should_timer_run():
             return
         self.move_timer -= 1
         self._update_timer_display()
@@ -367,7 +398,7 @@ class DoubleChessApp:
         self._stop_timer()
         if self.game.phase == PHASE_PLACEMENT:
             messagebox.showwarning("超时", "布置超时，跳过该手!")
-            self.game.move_count += 1
+            self.game.move_count = self.game.pieces_to_place_this_turn
             self.selected_hand_piece = None
             self._destroy_drag_overlay()
             self._check_placement_done()
@@ -375,17 +406,17 @@ class DoubleChessApp:
             if self.pending_upgrade:
                 return
             messagebox.showwarning("超时", "走子超时，跳过该手!")
-            self.game.move_count += 1
+            self.game.move_count = self.game.moves_this_turn
             self.selected_piece = None
             self.valid_moves = []
             self._check_movement_done()
 
     def _update_timer_display(self):
         sec = max(0, self.move_timer)
-        if sec <= 10:
-            self.status_bar.config(fg="#ff4444")
+        if self.game.phase == PHASE_PLACEMENT:
+            self.status_bar.config(fg="#ff4444" if sec <= 5 else "white")
         else:
-            self.status_bar.config(fg="white")
+            self.status_bar.config(fg="#ff4444" if sec <= 10 else "white")
 
     # ==================== 绘制棋盘 ====================
 
@@ -462,13 +493,15 @@ class DoubleChessApp:
             self._draw_movement_ghost()
 
     def _draw_palace_diagonals(self, row_start, row_end):
-        for r in [row_start, row_end]:
-            for side_col, opposite_col in [(3, 5)]:
-                x1 = MARGIN_X + side_col * CELL_SIZE
-                y1 = MARGIN_Y + r * CELL_SIZE
-                x2 = MARGIN_X + opposite_col * CELL_SIZE
-                y2 = MARGIN_Y + (row_end if r == row_start else row_start) * CELL_SIZE
-                self.canvas.create_line(x1, y1, x2, y2, fill=COLOR_LINE, width=1)
+        for side_col, opposite_col in [(3, 5)]:
+            self.canvas.create_line(
+                MARGIN_X + side_col * CELL_SIZE, MARGIN_Y + row_start * CELL_SIZE,
+                MARGIN_X + opposite_col * CELL_SIZE, MARGIN_Y + row_end * CELL_SIZE,
+                fill=COLOR_LINE, width=1)
+            self.canvas.create_line(
+                MARGIN_X + opposite_col * CELL_SIZE, MARGIN_Y + row_start * CELL_SIZE,
+                MARGIN_X + side_col * CELL_SIZE, MARGIN_Y + row_end * CELL_SIZE,
+                fill=COLOR_LINE, width=1)
 
     def _draw_piece(self, piece):
         cx = MARGIN_X + piece.col * CELL_SIZE
@@ -566,11 +599,14 @@ class DoubleChessApp:
     def on_hand_press(self, event):
         if self.game.phase != PHASE_PLACEMENT:
             return
-        if self.game.current_player != self.my_side:
+        if not self._is_my_turn():
             return
 
         idx = self.hand_listbox.nearest(event.y)
-        my_hand = self.game.black_hand if self.my_side == SIDE_BLACK else self.game.red_hand
+        if self.local_mode:
+            my_hand = self.game.black_hand if self.game.current_player == SIDE_BLACK else self.game.red_hand
+        else:
+            my_hand = self.game.black_hand if self.my_side == SIDE_BLACK else self.game.red_hand
         if idx < 0 or idx >= len(my_hand):
             return
 
@@ -675,7 +711,7 @@ class DoubleChessApp:
     def on_canvas_press(self, event):
         if self.game_over:
             return
-        if self.game.current_player != self.my_side:
+        if not self._is_my_turn():
             return
 
         col = round((event.x - MARGIN_X) / CELL_SIZE)
@@ -701,7 +737,9 @@ class DoubleChessApp:
 
         if self.game.phase == PHASE_PLAYING and not self.pending_upgrade:
             piece = self.game.get_piece_at(row, col)
-            if piece and piece.side == self.my_side:
+            if piece and piece.side == self.game.current_player:
+                if self.game.current_turn_moved_piece is piece:
+                    return  # 同手不可走同一棋子
                 self.movement_drag_active = True
                 self.movement_drag_piece = piece
                 self.drag_from_row = row
@@ -795,7 +833,7 @@ class DoubleChessApp:
 
     def _show_upgrade_dialog(self):
         piece = self.pending_upgrade
-        if piece.side != self.my_side:
+        if not self.local_mode and piece.side != self.my_side:
             return
 
         dialog = tk.Toplevel(self.root)
@@ -918,16 +956,23 @@ class DoubleChessApp:
         self.draw_board()
 
     def _update_status(self):
-        timer_text = f" | 倒计时: {max(0, self.move_timer)}秒" if (self.game.current_player == self.my_side and not self.game_over) else ""
+        timer_text = f" | 倒计时: {max(0, self.move_timer)}秒" if (self._should_timer_run()) else ""
 
         if self.game.phase == PHASE_PLACEMENT:
-            player_name = "黑方(你)" if self.my_side == SIDE_BLACK else "红方(你)"
-            opp_name = "红方" if self.my_side == SIDE_BLACK else "黑方"
-            current = "你" if self.game.current_player == self.my_side else "对手"
-            count = self.game.pieces_to_place_this_turn
-            self.status_bar.config(text=f"布置阶段 | {player_name} vs {opp_name} | 当前: {current} ({count}枚){timer_text}")
+            if self.local_mode:
+                current = "黑方" if self.game.current_player == SIDE_BLACK else "红方"
+                self.status_bar.config(text=f"布置阶段 | 黑方 vs 红方 | 当前: {current} ({self.game.pieces_to_place_this_turn}枚){timer_text}")
+            else:
+                player_name = "黑方(你)" if self.my_side == SIDE_BLACK else "红方(你)"
+                opp_name = "红方" if self.my_side == SIDE_BLACK else "黑方"
+                current = "你" if self.game.current_player == self.my_side else "对手"
+                count = self.game.pieces_to_place_this_turn
+                self.status_bar.config(text=f"布置阶段 | {player_name} vs {opp_name} | 当前: {current} ({count}枚){timer_text}")
         elif self.game.phase == PHASE_PLAYING:
-            current = "你" if self.game.current_player == self.my_side else "对手"
+            if self.local_mode:
+                current = "黑方" if self.game.current_player == SIDE_BLACK else "红方"
+            else:
+                current = "你" if self.game.current_player == self.my_side else "对手"
             moves = self.game.moves_this_turn
             remaining = moves - self.game.move_count
             self.status_bar.config(text=f"行棋阶段 | 当前: {current} | 剩余步数: {remaining}/{moves}{timer_text}")
@@ -937,12 +982,12 @@ class DoubleChessApp:
     def _update_hand_list(self):
         self.hand_listbox.delete(0, tk.END)
         if self.game.phase == PHASE_PLACEMENT:
-            my_hand = self.game.black_hand if self.my_side == SIDE_BLACK else self.game.red_hand
-            if self.game.current_player == self.my_side:
-                for p in my_hand:
+            if self.local_mode or self.game.current_player == self.my_side:
+                hand = self.game.black_hand if self.game.current_player == SIDE_BLACK else self.game.red_hand
+                for p in hand:
                     cls = f"[{p.piece_class}类]" if p.piece_class == "B" else ""
                     self.hand_listbox.insert(tk.END, f"{p.name} {cls}")
-                if not my_hand:
+                if not hand:
                     self.hand_listbox.insert(tk.END, "(布置完毕)")
             else:
                 opp = "黑方" if self.game.current_player == SIDE_BLACK else "红方"
@@ -952,14 +997,22 @@ class DoubleChessApp:
 
     def _update_captured(self):
         self.captured_listbox.delete(0, tk.END)
-        my_captured = self.game.black_captured if self.my_side == SIDE_BLACK else self.game.red_captured
-        opp_captured = self.game.red_captured if self.my_side == SIDE_BLACK else self.game.black_captured
-        self.captured_listbox.insert(tk.END, "--- 我方损失 ---")
-        for p in my_captured:
-            self.captured_listbox.insert(tk.END, f"  {p.name} ({p.score}分)")
-        self.captured_listbox.insert(tk.END, "--- 敌方损失 ---")
-        for p in opp_captured:
-            self.captured_listbox.insert(tk.END, f"  {p.name} ({p.score}分)")
+        if self.local_mode:
+            self.captured_listbox.insert(tk.END, "--- 黑方损失 ---")
+            for p in self.game.black_captured:
+                self.captured_listbox.insert(tk.END, f"  {p.name} ({p.score}分)")
+            self.captured_listbox.insert(tk.END, "--- 红方损失 ---")
+            for p in self.game.red_captured:
+                self.captured_listbox.insert(tk.END, f"  {p.name} ({p.score}分)")
+        else:
+            my_captured = self.game.black_captured if self.my_side == SIDE_BLACK else self.game.red_captured
+            opp_captured = self.game.red_captured if self.my_side == SIDE_BLACK else self.game.black_captured
+            self.captured_listbox.insert(tk.END, "--- 我方损失 ---")
+            for p in my_captured:
+                self.captured_listbox.insert(tk.END, f"  {p.name} ({p.score}分)")
+            self.captured_listbox.insert(tk.END, "--- 敌方损失 ---")
+            for p in opp_captured:
+                self.captured_listbox.insert(tk.END, f"  {p.name} ({p.score}分)")
 
     def _update_score(self):
         bs = self.game._calculate_score(SIDE_BLACK)

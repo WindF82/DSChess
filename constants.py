@@ -109,6 +109,10 @@ PHASE_GAME_OVER = "game_over"   # 结束
 DEFAULT_PORT = 55555
 BUFFER_SIZE = 4096
 
+# 计时器 (秒)
+PLACEMENT_TIMER = 30  # 布置阶段每手棋30秒
+PLAYING_TIMER = 60    # 行棋阶段每手棋60秒
+
 # 回合限制
 MAX_ROUNDS = 60  # 60回合未吃将则判分
 
