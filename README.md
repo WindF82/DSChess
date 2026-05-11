@@ -1,2 +1,2 @@
 # DSChess
-DoubleSteps-Chenss
+DoubleSteps-Chess
