@@ -1,0 +1,32 @@
+DSChess User Manual V1.2
+
+【Project Name】DSChess (双步象棋, literally "Double-Step Chess").
+
+【Overview】DSChess is a Chinese Chess variant supporting two modes: local hot-seat (two players sharing one window) and LAN multiplayer. In LAN mode, players match via a simple room code (e.g., "Cui2") — one player creates a room, the other joins, and the game begins after both confirm.
+
+【Board & Pieces】The board consists of 10 horizontal lines and 9 vertical lines, with the river (楚河汉界) dividing the center. Each side starts with 16 Class-A pieces only — 2 Generals (将/帅), 1 Advisor (士/仕), 2 Elephants (相/象), 2 Horses (馬), 2 Chariots (車), 2 Cannons (砲/炮), 5 Soldiers (兵/卒). Class-B pieces (馬, 砲/炮, 車) are not placed initially; they can only be obtained by promoting a Soldier that reaches the opponent's back rank.
+
+【Placement Phase】Black goes first, placing 1 piece; thereafter both sides alternate placing 2 pieces at a time. Soldiers (兵/卒) are restricted to row 3 (Black) or row 6 (Red). Generals (将/帅) and Advisors (士/仕) are restricted to their own palace (3×3 grid). Each placement turn is limited to 30 seconds — the status bar shows a real-time countdown, turning red at ≤5 seconds. Timeout skips the entire turn and switches players. To place a piece, drag it from the right-side hand panel onto the target board position. Valid placement spots show a green dashed outline; invalid spots show red.
+
+【Playing Phase】After all pieces are placed, the movement phase begins: Black moves first with 1 step, then both sides alternate with 2 steps per turn. Move a piece by pressing and dragging it from its board position to the target square — the source piece fades while dragging, and valid moves are highlighted in green. Releasing places the piece. Each move turn is limited to 60 seconds — the status bar shows a real-time countdown, turning red at ≤10 seconds. Timeout skips the entire turn and switches players. If a Soldier reaches the opponent's back rank, a dialog appears to promote it to Horse (馬), Cannon (砲/炮), or Chariot (車), after which it follows the corresponding Class-B movement rules.
+
+【Movement Rules】
+  - General (将/帅): 1 step horizontally or vertically within the palace.
+  - Advisor (士/仕): 1 step diagonally within the palace.
+  - Elephant (相/象): Any number of steps diagonally within own territory (no jumping over pieces). Captures the first enemy piece encountered.
+  - Horse (馬): "Day" pattern (L-shape) globally; no blocking leg.
+  - Chariot (車): Any number of steps horizontally or vertically (no jumping over pieces). Captures the first enemy piece encountered.
+  - Cannon (砲/炮): Moves like Chariot; captures by jumping over exactly 1 piece (the "screen"/炮架) and taking the enemy piece behind it.
+  - Soldier (兵/卒): Before crossing the river, may only move 1 step forward. After crossing the river, may move 1 step forward or sideways.
+  - Within a single turn, both steps MUST use different pieces (cannot move the same piece twice in one turn).
+
+【Scoring & Victory】
+  - Capturing both of the opponent's Generals results in an immediate win.
+  - If no player has lost both Generals after 60 rounds, total scores are compared:
+      General: 5 pts | Chariot: 4 pts | Advisor / Elephant / Horse / Cannon: 3 pts each | Soldier: 2 pts each
+  - The player who actively causes a board position cycle receives a 10-point penalty deduction.
+  - The player with the higher final score wins.
+
+【Developer Info】
+  Author: 一建高工崔雷
+  Email: cuilei@alumni.sjtu.edu.cn
